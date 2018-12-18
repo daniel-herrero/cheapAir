@@ -1,3 +1,6 @@
+#include <Wire.h>
+#include <UnoWiFiDevEd.h>
+
 int ledCO = 8;
 int ledNO2 = 9;
 int ledO3 = 10;
@@ -16,6 +19,8 @@ int valueO3 = 0;
 
 void setup() {
   // put your setup code here, to run once:
+  Wifi.begin();
+  Wifi.println("Web Server is up");
 
   pinMode(ledCO, OUTPUT);
   pinMode(ledNO2, OUTPUT);
@@ -47,13 +52,13 @@ void ledCOoutput(int v){
 }
 
 void ledNO2output(int v){
-   int w = v/2;
+   int w = v/6;
    analogWrite(ledNO2, w);
    
 }
 
 void ledO3output(int v){
-   int w = v/2;
+   int w = v/6;
    analogWrite(ledO3, w);
    
 }
@@ -70,6 +75,51 @@ void shutdownLeds(){
   analogWrite(ledO3, 0);
   analogWrite(ledG, 0);
   
+}
+
+void process(WifiData client, int co, int no2, int o3, int g) {
+  // read the command
+  String command = client.readStringUntil('/');
+
+  if (command == "webserver3") {
+    WebServer(client, co, no2, o3, g);
+  }
+}
+
+void WebServer(WifiData client, int co, int no2, int o3, int g) {
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println("Refresh: 20");  // refresh the page automatically every  sec
+  client.println();
+  client.println("<html>");
+  client.println("<head> <title>UNO WIFI Example</title> </head>");
+  client.print("<meta http-equiv=\"refresh\" content=\"0\">");
+  client.print("<body>");
+
+  client.print("CO = ");
+  client.print(co);
+  client.print(" ppm");
+  client.print("<br/>");
+
+  client.print("NO2 = ");
+  client.print(no2);
+  client.print(" ppm");
+  client.print("<br/>");
+
+  client.print("O3 = ");
+  client.print(o3);
+  client.print(" ppm");
+  client.print("<br/>");
+  
+  client.print("G = ");
+  client.println(g);
+  client.print(" ppm");
+  client.print("<br/>");
+
+  client.print("</body>");
+  client.println("</html>");
+  client.print(DELIMITER); // very important to end the communication !!!
 }
 
 void loop() {
@@ -100,8 +150,12 @@ void loop() {
   Serial.print(o3);
   Serial.print("\t G = ");
   Serial.println(g);
-  delay(2000);
+
   shutdownLeds();
 
+  while(Wifi.available()){
+    process(Wifi, co, no2, o3, g);
+  }
+  delay(20);
 
 }
