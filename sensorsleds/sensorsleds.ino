@@ -1,5 +1,8 @@
+#include <MQ7.h>
+
 #include <Wire.h>
 #include <UnoWiFiDevEd.h>
+
 
 static unsigned long timer;
 
@@ -7,6 +10,9 @@ int ledCO = 8;
 int ledNO2 = 9;
 int ledO3 = 10;
 int ledG = 11;
+
+float noDangerCOLimit = 50;
+float dangerCOLimit= 100;
 
 int brightness = 0;
 int warnstep = 5;
@@ -23,7 +29,7 @@ void setup() {
   // put your setup code here, to run once:
   timer = millis() + 1000;
   Serial.println(timer);
-
+  
   Wifi.begin();
   Wifi.println("Web Server is up");
 
@@ -34,8 +40,9 @@ void setup() {
   Serial.begin(9600);
 }
 
-int readCO(){
-  valueCO = analogRead(sensorCO);
+float readCO(){
+  MQ7 mq7(A1, 5.0); 
+  float valueCO = mq7.getPPM();
   return valueCO;
 }
 
@@ -49,14 +56,30 @@ int readO3(){
   return valueO3;
 }
 
-void ledCOoutput(int v){
-   int w = v/2;
-   analogWrite(ledCO, w);
-   
+void shutdownLed(int led){
+  analogWrite(led, 0);
+}
+
+void lightLedHalf(int led){
+  analogWrite(led, 30);
+}
+
+void lightLedFull(int led){
+  analogWrite(led, 150);
+}
+
+void ledCOoutput(float ppmCOValue){
+   if (ppmCOValue > dangerCOLimit) {
+    lightLedFull(ledNO2);
+   } else if (ppmCOValue > noDangerCOLimit) {
+    lightLedHalf(ledNO2);
+   } else {
+    shutdownLed(ledNO2);
+   }
 }
 
 void ledNO2output(int v){
-   int w = v/6;
+   int w = v/5;
    analogWrite(ledNO2, w);
    
 }
@@ -73,13 +96,6 @@ void ledGoutput(int u, int v, int w){
     
 }
 
-void shutdownLeds(){
-  analogWrite(ledCO, 0);
-  analogWrite(ledNO2, 0);
-  analogWrite(ledO3, 0);
-  analogWrite(ledG, 0);
-  
-}
 
 void process(WifiData client, int co, int no2, int o3, int g) {
   // read the command
@@ -144,11 +160,11 @@ void loop() {
   }
 
  if( (long)(millis()-timer) >= 0) {
-    shutdownLeds();
+//    shutdownLeds();
     ledCOoutput(co);
-    ledNO2output(no2);
-    ledO3output(o3);
-    ledGoutput(co,no2,o3);
+    //ledNO2output(150);
+    ledO3output(30);
+    ledGoutput(1,1,1);
 
     timer += 1000;
   }
@@ -161,7 +177,4 @@ void loop() {
   Serial.print(o3);
   Serial.print("\t G = ");
   Serial.println(g);
-  Serial.println("\t Timer = ");
-  Serial.println(timer);
-
 }
