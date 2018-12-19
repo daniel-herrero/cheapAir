@@ -180,11 +180,11 @@ void shutdownLed(int led){
 }
 
 void lightLedHalf(int led){
-  analogWrite(led, 30);
+  analogWrite(led, 150);
 }
 
 void lightLedFull(int led){
-  analogWrite(led, 150);
+  analogWrite(led, 255);
 }
 
 void ledGoutput(int u, int v, int w){
@@ -248,10 +248,9 @@ void loop() {
   }
 
  if( (long)(millis()-timer) >= 0) {
-//    shutdownLeds();
     ledCOoutput(co);
-    //ledNO2output(150);
-    ledO3output(30);
+    ledNO2output(no2);
+    ledO3output(o3);
     ledGoutput(co,no2,o3);
 
     timer += 1000;
