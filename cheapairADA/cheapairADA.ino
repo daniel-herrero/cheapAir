@@ -5,22 +5,43 @@
  XV PIWEEK project
 *****************************************************************************/
 
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#include <SPI.h>
+#include <WiFi101.h>
+#include <WiFiMDNSResponder.h>
+
+// OLED related
+
+
+Adafruit_SSD1306 display = Adafruit_SSD1306(128, 32, &Wire);
+
+
+void displayText(char txt[]){
+  display.clearDisplay();
+display.setCursor(0,0);
+  display.print(txt);
+    display.display();
+  
+}
+
+
 // MQ7 related
 #include <MQ7.h>
 
-#include <Wire.h>
-#include <WiFi101.h>
 
 
-int ledCO = 8;
+int ledCO = 12;
 float COnoDangerLimit = 50; //50 ppm
 float CODangerLimit = 100; // 100 ppm
 
-const int sensorCO = A1; //MQ-7
-int valueCO = 0;
+const int sensorCO = A3; //MQ-7
+float valueCO = 0;
 
 float readCO(){
-  MQ7 mq7(A1, 5.0);
+  MQ7 mq7(sensorCO, 5.0);
   float valueCO = mq7.getPPM();
   return valueCO;
 }
@@ -117,51 +138,134 @@ void ledO3output(int ppmO3Value){
 
 // WIFI SERVER
 
+char mdnsName[] = "cheapair"; // the MDNS name that the board will respond to
+                             // after WiFi settings have been provisioned
+// Note that the actual MDNS name will have '.local' after
+// the name above, so "wifi101" will be accessible on
+// the MDNS name "wifi101.local".
 
+WiFiServer server(80);
 
-void process(WifiData client, int co, int no2, int o3, int g) {
-  // read the command
-  String command = client.readStringUntil('/');
+// Create a MDNS responder to listen and respond to MDNS name requests.
+WiFiMDNSResponder mdnsResponder;
 
-  if (command == "webserver3") {
-    WebServer(client, co, no2, o3, g);
+void WIFISetup(){
+
+    WiFi.setPins(8,7,4,2);
+      // check for the presence of the shield:
+  if (WiFi.status() == WL_NO_SHIELD) {
+    Serial.println("WiFi shield not present");
+    // don't continue:
+    while (true);
   }
+
+  // Start in provisioning mode:
+  //  1) This will try to connect to a previously associated access point.
+  //  2) If this fails, an access point named "wifi101-XXXX" will be created, where XXXX
+  //     is the last 4 digits of the boards MAC address. Once you are connected to the access point,
+  //     you can configure an SSID and password by visiting http://wifi101/
+  WiFi.beginProvision();
+
+  server.begin();
+
+  // Setup the MDNS responder to listen to the configured name.
+  // NOTE: You _must_ call this _after_ connecting to the WiFi network and
+  // being assigned an IP address.
+  if (!mdnsResponder.begin(mdnsName)) {
+    Serial.println("Failed to start MDNS responder!");
+    while(1);
+  }
+
+  Serial.print("Server listening at http://");
+  Serial.print(mdnsName);
+  Serial.println(".local/");
+
+  // you're connected now, so print out the status:
+  printWiFiStatus();
+    
 }
 
-void WebServer(WifiData client, int co, int no2, int o3, int g) {
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: text/html");
-  client.println("Connection: close");
-  client.println("Refresh: 20");  // refresh the page automatically every  sec
-  client.println();
-  client.println("<html>");
-  client.println("<head> <title>UNO WIFI Example</title> </head>");
-  client.print("<meta http-equiv=\"refresh\" content=\"0\">");
-  client.print("<body>");
+void printWiFiStatus() {
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
 
-  client.print("CO = ");
-  client.print(co);
-  client.print(" ppm");
-  client.print("<br/>");
+  // print your WiFi shield's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
 
-  client.print("NO2 = ");
-  client.print(no2);
-  client.print(" ppm");
-  client.print("<br/>");
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+}
 
-  client.print("O3 = ");
-  client.print(o3);
-  client.print(" ppm");
-  client.print("<br/>");
+void WebServer(WiFiClient client, int co, int no2, int o3, int g){
 
-  client.print("G = ");
-  client.println(g);
-  client.print(" ppm");
-  client.print("<br/>");
 
-  client.print("</body>");
-  client.println("</html>");
-  client.print(DELIMITER); // very important to end the communication !!!
+    Serial.println("new client");
+    // an http request ends with a blank line
+    boolean currentLineIsBlank = true;
+    while (client.connected()) {
+      if (client.available()) {
+        char c = client.read();
+        Serial.write(c);
+        // if you've gotten to the end of the line (received a newline
+        // character) and the line is blank, the http request has ended,
+        // so you can send a reply
+        if (c == '\n' && currentLineIsBlank) {
+          // send a standard http response header
+          client.println("HTTP/1.1 200 OK");
+          client.println("Content-Type: text/html");
+          client.println("Connection: close");  // the connection will be closed after completion of the response
+          client.println("Refresh: 5");  // refresh the page automatically every 5 sec
+          client.println();
+          client.println("<!DOCTYPE HTML>");
+          client.println("<html>");
+          client.print("<body>");
+
+          client.print("CO = ");
+          client.print(co);
+          client.print(" ppm");
+          client.print("<br/>");
+
+          client.print("NO2 = ");
+          client.print(no2);
+          client.print(" ppm");
+          client.print("<br/>");
+
+          client.print("O3 = ");
+          client.print(o3);
+          client.print(" ppm");
+          client.print("<br/>");
+
+          client.print("G = ");
+          client.println(g);
+          client.print(" ppm");
+          client.print("<br/>");
+          client.print("</body>");
+          client.println("</html>");
+          break;
+        }
+        if (c == '\n') {
+          // you're starting a new line
+          currentLineIsBlank = true;
+        }
+        else if (c != '\r') {
+          // you've gotten a character on the current line
+          currentLineIsBlank = false;
+        }
+      
+    }
+    // give the web browser time to receive the data
+    delay(1);
+
+    // close the connection:
+    client.stop();
+    Serial.println("client disonnected");
+  }
 }
 
 
@@ -208,17 +312,29 @@ void setup() {
   // put your setup code here, to run once:
   timer = millis() + 1000;
   Serial.println(timer);
-
-  Wifi.begin();
-  Wifi.println("Web Server is up");
+ 
+  //WIFISetup();
 
   pinMode(ledCO, OUTPUT);
   pinMode(ledNO2, OUTPUT);
   pinMode(ledO3, OUTPUT);
   pinMode(ledG, OUTPUT);
 
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C); // Address 0x3C for 128x32
+
+  display.display();
+  delay(1000);
+
+  // Clear the buffer.
+  display.clearDisplay();
+  display.display();
+
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+
   Serial.begin(9600);
   Serial.print("Calibrating...");                        //serial display
+  displayText("Calibrating...");
 
   Ro = MQCalibration(sensorO3NO2);                         //Calibrating the sensor. Please make sure the sensor is in clean air
 
@@ -226,6 +342,9 @@ void setup() {
   Serial.print("Ro= ");
   Serial.print(Ro);
   Serial.println("kohm");
+  display.clearDisplay();
+  
+
 }
 
 
@@ -235,7 +354,7 @@ void loop() {
   // put your main code here, to run repeatedly:
 
 
-  int co = readCO();
+  float co = readCO();
   int no2 = readNO2();
   int o3 = readO3();
   int g = co + no2 + o3;
@@ -245,9 +364,6 @@ void loop() {
 //  int o3 = 1000;
 //  int g = 1000;
 
-  while(Wifi.available()){
-    process(Wifi, co, no2, o3, g);
-  }
 
  if( (long)(millis()-timer) >= 0) {
     ledCOoutput(co);
@@ -266,6 +382,21 @@ void loop() {
   Serial.print(o3);
   Serial.print("\t G = ");
   Serial.println(g);
+
+  display.setCursor(0,0);
+  display.print("CO ppm:");
+  display.println(co);
+  display.print("NO2 ppm:");
+  display.println(no2);
+  display.print("O3 ppm:");
+  display.println(o3);
+  display.print("General:");
+  display.println(g);
+  display.setCursor(0,0);
+  display.display(); // actually display all of the above
+  delay(10);
+   display.clearDisplay();
+  yield();
 }
 
 
