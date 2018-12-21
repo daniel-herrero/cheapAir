@@ -21,9 +21,9 @@ Adafruit_SSD1306 display = Adafruit_SSD1306(128, 32, &Wire);
 
 void displayText(char txt[]){
   display.clearDisplay();
-display.setCursor(0,0);
+  display.setCursor(0,0);
   display.print(txt);
-    display.display();
+  display.display();
   
 }
 
@@ -33,15 +33,15 @@ display.setCursor(0,0);
 
 
 
-int ledCO = 12;
-float COnoDangerLimit = 50; //50 ppm
-float CODangerLimit = 100; // 100 ppm
+int ledCO = 11;
+float COnoDangerLimit = 15; //50 ppm
+float CODangerLimit = 20; // 100 ppm
 
 const int sensorCO = A3; //MQ-7
 float valueCO = 0;
 
 float readCO(){
-  MQ7 mq7(sensorCO, 5.0);
+  MQ7 mq7(sensorCO, 3.3);
   float valueCO = mq7.getPPM();
   return valueCO;
 }
@@ -56,24 +56,59 @@ void ledCOoutput(float ppmCOValue){
    }
 }
 
+
+//MQ4 related
+
+int ledCH4 = 10;
+float CH4noDangerLimit = 30; //50 ppm
+float CH4DangerLimit = 40; // 100 ppm
+const int sensorch4 = A2; //MQ-4
+
+float m = -0.318; //Slope
+float b = 1.133; //Y-Intercept
+float R0 = 11.820; //Sensor Resistance in fresh air from previous code
+
+
+
+float readCH4(){
+  float valueCH4 = analogRead(sensorch4);
+  float sensor_volt = valueCH4 * (3.3 / 1023.0); //Convert analog values to voltage
+  float RS_gas = ((3.3 * 10.0) / sensor_volt) - 10.0; //Get value of RS in a gas
+  float ratio = RS_gas / R0;   // Get ratio RS_gas/RS_air
+
+  double ppm_log = (log10(ratio) - b) / m; //Get ppm value in linear scale according to the the ratio value
+  float ppmCH4 = pow(10, ppm_log); //Convert ppm value to log scale
+  return valueCH4;
+}
+
+void ledCH4output(float ppmCH4Value){
+   if (ppmCH4Value > CH4DangerLimit) {
+    lightLedFull(ledCH4);
+  } else if (ppmCH4Value > CH4noDangerLimit) {
+    lightLedHalf(ledCH4);
+   } else {
+    shutdownLed(ledCH4);
+   }
+}
+
 //------------------------------------------------
 
 // MQ131 related
 
 
-int ledNO2 = 9;
-int ledO3 = 10;
+int ledNO2 = 10;
+int ledO3 = 12;
 
 const int sensorO3NO2 = A2; //MQ-131
 
 int valueNO2 = 0;
 int valueO3 = 0;
 
-float NO2noDangerLimit = 50; //50 ppm
-float NO2DangerLimit = 100; // 100 ppm
+float NO2noDangerLimit = 0; //50 ppm
+float NO2DangerLimit = 1; // 100 ppm
 
-float O3noDangerLimit = 50; //50 ppm
-float O3DangerLimit = 100; // 100 ppm
+float O3noDangerLimit = 40; //50 ppm
+float O3DangerLimit = 50; // 100 ppm
 
 // relevant setup values
 int RL_VALUE=5;                                     //define the load resistance on the board, in kilo ohms
@@ -272,10 +307,10 @@ void WebServer(WiFiClient client, int co, int no2, int o3, int g){
 
 // General
 
-int ledG = 11;
+int ledG = 13;
 
-float GnoDangerLimit = 50; //50 ppm
-float GDangerLimit = 100; // 100 ppm
+float GnoDangerLimit = 80; //50 ppm
+float GDangerLimit = 90; // 100 ppm
 
 static unsigned long timer;
 
@@ -312,6 +347,9 @@ void setup() {
   // put your setup code here, to run once:
   timer = millis() + 1000;
   Serial.println(timer);
+
+//pinMode(sensorch4, INPUT);
+//pinMode(sensorCO, INPUT);
  
   //WIFISetup();
 
@@ -336,7 +374,7 @@ void setup() {
   Serial.print("Calibrating...");                        //serial display
   displayText("Calibrating...");
 
-  Ro = MQCalibration(sensorO3NO2);                         //Calibrating the sensor. Please make sure the sensor is in clean air
+  Ro = MQCalibration(sensorch4);                         //Calibrating the sensor. Please make sure the sensor is in clean air
 
   Serial.println("done!");                                 //serial display
   Serial.print("Ro= ");
@@ -355,9 +393,11 @@ void loop() {
 
 
   float co = readCO();
-  int no2 = readNO2();
-  int o3 = readO3();
-  int g = co + no2 + o3;
+//  int no2 = readNO2();
+//  int o3 = readO3();
+  float ch4 = readCH4();
+  float o3 = ch4;
+  int g = co + ch4 + o3;
 //
 //  int co = 1000;
 //  int no2 = 1000;
@@ -367,17 +407,17 @@ void loop() {
 
  if( (long)(millis()-timer) >= 0) {
     ledCOoutput(co);
-    ledNO2output(no2);
+    ledCH4output(ch4);
     ledO3output(o3);
-    ledGoutput(co,no2,o3);
+    ledGoutput(co,ch4,o3);
 
     timer += 1000;
   }
 
   Serial.print("CO = ");
   Serial.print(co);
-  Serial.print("\t NO2 = ");
-  Serial.print(no2);
+  Serial.print("\t CH4 = ");
+  Serial.print(ch4);
   Serial.print("\t O3 = ");
   Serial.print(o3);
   Serial.print("\t G = ");
@@ -386,8 +426,8 @@ void loop() {
   display.setCursor(0,0);
   display.print("CO ppm:");
   display.println(co);
-  display.print("NO2 ppm:");
-  display.println(no2);
+  display.print("CH4 ppm:");
+  display.println(ch4);
   display.print("O3 ppm:");
   display.println(o3);
   display.print("General:");
@@ -397,6 +437,7 @@ void loop() {
   delay(10);
    display.clearDisplay();
   yield();
+  delay(1000);
 }
 
 
